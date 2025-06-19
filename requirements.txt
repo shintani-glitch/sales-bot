@@ -1,0 +1,7 @@
+# requirements.txt
+psycopg2-binary
+requests
+tweepy
+pyshorteners
+google-generativeai
+pytz
