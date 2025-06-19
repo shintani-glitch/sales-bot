@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timezone, timedelta
 
 # --- API & DB設定 (Renderの環境変数から取得) ---
-# 重要：これらの値はコードに直接書かず、必ず環境変数として設定してください。
+# この部分は変更ありません。
 RAKUTEN_APP_ID = os.environ.get("RAKUTEN_APP_ID")
 RAKUTEN_AFFILIATE_ID = os.environ.get("RAKUTEN_AFFILIATE_ID")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -14,30 +14,47 @@ TWITTER_API_SECRET = os.environ.get("TWITTER_API_SECRET")
 TWITTER_ACCESS_TOKEN = os.environ.get("TWITTER_ACCESS_TOKEN")
 TWITTER_ACCESS_SECRET = os.environ.get("TWITTER_ACCESS_SECRET")
 
-# --- 検索キーワード ---
-# あなたのBotの専門ジャンルに合わせてキーワードを設定
+
+# ★★★ ここからがオールジャンル版の変更点 ★★★
+
+# --- 検索キーワード (オールジャンル対応) ---
+# 特定の製品名ではなく、楽天のランキングや広範なカテゴリで検索します。
+# これにより、予期せぬ掘り出し物が見つかる可能性が高まります。
 SEARCH_KEYWORDS = [
-    "ゲーミングモニター 4K 144Hz",
-    "Anker Soundcore",
-    "Logicool MX Master",
-    "ワイヤレスイヤホン ノイズキャンセリング",
-    "プロテイン ザバス",
-    "釣り具 シーバス ルアー"
+    # 楽天の総合ランキングTOP30から探す (最も効果的)
+    "ランキング", 
+    # 生活必需品・人気カテゴリ
+    "日用品",
+    "水 ドリンク",
+    "スイーツ",
+    "訳あり", # 「訳あり」にはお得な商品が多い
+    # 家電・デジタル製品
+    "家電",
+    "イヤホン",
+    "スマホアクセサリー",
+    # ファッション・美容
+    "ファッション",
+    "コスメ",
+    # 趣味・その他
+    "アウトドア",
+    "防災グッズ",
 ]
 
 # --- ディールスコア設定 ---
-# このスコアを超えたら、Geminiに問い合わせる候補とする
-DEAL_SCORE_THRESHOLD = 80
+# オールジャンル化に伴い、様々な商品がヒットするため、
+# スコアの閾値を少し厳しめにして「本当に良いもの」だけを厳選するのも手です。
+DEAL_SCORE_THRESHOLD = 85 # 例: 80から85に引き上げ
 
-# スコアの重み付け
+# スコアの重み付け (変更なし、お好みで調整)
 SCORE_WEIGHTS = {
-    "point_rate": 2.5,          # ポイント1倍あたり2.5点
-    "review_average": 20,       # レビュー平均1点あたり20点
-    "is_free_shipping": 15,     # 送料無料なら+15点
+    "point_rate": 2.5,
+    "review_average": 20,
+    "is_free_shipping": 15,
 }
 
-# --- セールイベント期間設定 (手動で設定) ---
+# --- セールイベント期間設定 (変更なし) ---
 JST = timezone(timedelta(hours=+9))
-# 例：次の楽天スーパーセール期間を想定
+# 現在時刻を基準にしているので、ここは特に変更不要です。
+# ただし、今はセール期間外ですね。
 SUPER_SALE_START = datetime(2025, 9, 4, 20, 0, 0, tzinfo=JST)
 SUPER_SALE_END = datetime(2025, 9, 11, 1, 59, 0, tzinfo=JST)
