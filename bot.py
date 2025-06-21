@@ -1,8 +1,10 @@
-# bot.py
+# bot.py (最終調整版)
 import random
 import tweepy
 from datetime import datetime
 import pytz
+import pyshorteners
+import time
 
 import config
 import database
@@ -10,7 +12,7 @@ import rakuten_api
 import tweet_generator
 
 class DealScorer:
-    """コストゼロのローカル処理で、セールの価値を点数化するクラス"""
+    # (このクラスは変更なし)
     def __init__(self, item_data):
         self.item = item_data["Item"]
         self.weights = config.SCORE_WEIGHTS
@@ -23,28 +25,18 @@ class DealScorer:
             score += self.weights["is_free_shipping"]
         return score
 
-# ★★★ ここが最新のスケジュールです ★★★
 def is_post_time():
-    """現在が投稿すべき時間かを判定する (平日7回/休日10回 高頻度戦略版)"""
+    # (この関数は変更なし)
     jst = pytz.timezone('Asia/Tokyo')
     now = datetime.now(jst)
-    weekday = now.weekday()  # 月曜=0, ..., 日曜=6
+    weekday = now.weekday()
     hour = now.hour
-
-    # 大型セール期間中は毎時投稿 (変更なし)
     if config.SUPER_SALE_START <= now <= config.SUPER_SALE_END:
         return True
-
-    # --- 平日の戦略的スケジュール (計7回) ---
-    # 通勤・通学、始業直後、昼休み、午後休憩、退勤、夜のゴールデンタイム、就寝前を狙う
     if 0 <= weekday <= 4 and hour in [7, 9, 12, 15, 18, 21, 23]:
         return True
-        
-    # --- 休日の戦略的スケジュール (計10回) ---
-    # 活動が分散する休日は、午前から深夜まで網羅的にカバーし、接触機会を最大化する
     if weekday >= 5 and hour in [9, 11, 12, 14, 16, 18, 19, 21, 22, 23]:
         return True
-            
     return False
 
 def main():
@@ -61,11 +53,6 @@ def main():
             consumer_key=config.TWITTER_API_KEY, consumer_secret=config.TWITTER_API_SECRET,
             access_token=config.TWITTER_ACCESS_TOKEN, access_token_secret=config.TWITTER_ACCESS_SECRET
         )
-        auth = tweepy.OAuth1UserHandler(
-            config.TWITTER_API_KEY, config.TWITTER_API_SECRET,
-            config.TWITTER_ACCESS_TOKEN, config.TWITTER_ACCESS_SECRET
-        )
-        api_v1 = tweepy.API(auth)
     except Exception as e:
         print(f"Twitter APIの認証に失敗しました: {e}")
         return
@@ -89,29 +76,39 @@ def main():
                 print(f"30日以内に投稿済みのためスキップします。")
                 continue
 
-            generated_text = database.get_cached_tweet(item_code)
-            if not generated_text:
-                 print("L3: 未知の逸材、または古いキャッシュ。Geminiにツイート生成を依頼。")
-                 tweet_json = tweet_generator.generate_tweet_with_gemini(item_data["Item"])
-                 if not tweet_json or "best_tweet" not in tweet_json:
-                     print("Geminiでの生成に失敗。この商品はスキップします。")
-                     continue
-                 generated_text = tweet_json["best_tweet"]
-            else:
-                print("L2: 30日以上前のキャッシュを発見。ツイートを再利用します。")
+            # ★★★ 投稿ロジックを修正 ★★★
+            # まずはツイート文のテンプレート（URLなし）を生成
+            cached_text_template = database.get_cached_tweet(item_code)
             
-            final_tweet, image_path = tweet_generator.prepare_tweet_content(item_data, generated_text)
+            if cached_text_template:
+                print("L2: キャッシュからツイートテンプレートを発見。")
+                text_template = cached_text_template
+            else:
+                print("L3: 未知の逸材。Geminiにツイート生成を依頼。")
+                tweet_json = tweet_generator.generate_tweet_with_gemini(item_data["Item"])
+                time.sleep(2)
+
+                if not tweet_json or "best_tweet" not in tweet_json:
+                    print("Geminiでの生成に失敗。この商品はスキップします。")
+                    continue
+                
+                # 最終的なツイート全文ではなく、URL部分を除いたテンプレートを生成
+                text_template = tweet_generator.prepare_final_tweet_text(tweet_json)
+                
+            # 実際の短縮URLを生成
+            s = pyshorteners.Shortener()
+            short_link = s.tinyurl.short(item_data["Item"]['affiliateUrl'])
+            
+            # テンプレートに本物のURLを埋め込む
+            final_tweet = text_template.replace("https://tinyurl.com/dummy", short_link)
             
             try:
-                media_id = None
-                if image_path:
-                    media = api_v1.media_upload(filename=image_path)
-                    media_id = media.media_id_string
-                
-                client.create_tweet(text=final_tweet, media_ids=[media_id] if media_id else None)
+                # 画像なしでツイート
+                client.create_tweet(text=final_tweet)
                 print("★★★ ツイート成功！ ★★★")
                 
-                database.save_posted_item(item_code, generated_text)
+                # DBにはURLなしのテンプレートを保存
+                database.save_posted_item(item_code, text_template)
                 
                 print("素晴らしいディールを投稿したので、今回の実行はこれで終了します。")
                 return
