@@ -1,9 +1,10 @@
 # tweet_generator.py
 import json
+import re  # 正規表現を扱うためのライブラリをインポート
 import requests
 import pyshorteners
 import google.generativeai as genai
-import config  # ← 不足していたimport文です
+import config
 
 # Gemini APIの初期設定
 if config.GEMINI_API_KEY:
@@ -56,14 +57,27 @@ def generate_tweet_with_gemini(item_info):
 """
     try:
         response = model.generate_content(prompt)
-        return json.loads(response.text.strip())
+        raw_text = response.text
+
+        # --- ★★★ 新しい、より堅牢なクリーニング処理 ★★★ ---
+        print(f"--- Geminiからの生の応答 ---\n{raw_text}\n--- 応答ここまで ---")
+        
+        # 正規表現を使い、`{` で始まり `}` で終わるJSONオブジェクトの部分だけを抽出する
+        match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+        
+        if match:
+            clean_json_text = match.group(0)
+            print(f"--- クリーニング後のJSONテキスト ---\n{clean_json_text}\n--- テキストここまで ---")
+            # 抽出したクリーンなテキストをJSONとして解析
+            return json.loads(clean_json_text)
+        else:
+            # 応答からJSONオブジェクトが見つからなかった場合
+            print("エラー: 応答テキストから有効なJSONオブジェクトを見つけられませんでした。")
+            return None
+        # --- ★★★ 修正部分ここまで ★★★
+
     except Exception as e:
-        print(f"Gemini APIエラー: {e}")
-        # 詳細なエラーデバッグのため、生の応答を出力する
-        if 'response' in locals() and hasattr(response, 'parts'):
-            print("--- Geminiからのエラー応答詳細 ---")
-            print(response.parts)
-            print("--- 応答ここまで ---")
+        print(f"Gemini APIエラー（JSON解析中またはその他）: {e}")
         return None
 
 def prepare_tweet_content(item_data, generated_text):
