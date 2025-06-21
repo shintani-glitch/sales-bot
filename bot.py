@@ -1,10 +1,11 @@
-# bot.py (可読性向上版)
+# bot.py (最終調整版)
 import random
 import tweepy
 from datetime import datetime
 import pytz
 import pyshorteners
 import time
+import json
 
 import config
 import database
@@ -22,11 +23,25 @@ class DealScorer:
         return score
 
 def is_post_time():
-    # (変更なし)
-    jst = pytz.timezone('Asia/Tokyo'); now = datetime.now(jst); weekday = now.weekday(); hour = now.hour
-    if config.SUPER_SALE_START <= now <= config.SUPER_SALE_END: return True
-    if 0 <= weekday <= 4 and hour in [7, 9, 12, 15, 18, 21, 23]: return True
-    if weekday >= 5 and hour in [9, 11, 12, 14, 16, 18, 19, 21, 22, 23]: return True
+    """現在が投稿すべき時間かを判定する (最終調整版)"""
+    jst = pytz.timezone('Asia/Tokyo')
+    now = datetime.now(jst)
+    weekday = now.weekday()  # 月曜=0, ..., 日曜=6
+    hour = now.hour
+
+    # 大型セール期間中は毎時投稿 (変更なし)
+    if config.SUPER_SALE_START <= now <= config.SUPER_SALE_END:
+        return True
+
+    # --- ★★★ ここからが最新のスケジュールです ★★★ ---
+    # 平日 (月曜〜金曜) の投稿時間
+    if 0 <= weekday <= 4 and hour in [0, 7, 9, 12, 15, 18, 19, 20, 21, 22, 23]:
+        return True
+        
+    # 休日 (土曜・日曜) の投稿時間
+    if weekday >= 5 and hour in [0, 9, 11, 12, 14, 16, 18, 19, 20, 21, 22, 23]:
+        return True
+            
     return False
 
 def main():
@@ -58,7 +73,6 @@ def main():
             if database.is_recently_posted(item_code, days=30):
                 print(f"30日以内に投稿済みのためスキップ。"); continue
 
-            # ★★★ ここからが新しいツイート組み立てロジック ★★★
             tweet_parts_json = database.get_cached_tweet(item_code)
             if tweet_parts_json:
                 print("L2: キャッシュからツイートパーツを発見。")
@@ -70,7 +84,6 @@ def main():
                 if not tweet_json:
                     print("Geminiでの生成に失敗。スキップします。"); continue
             
-            # 組み立て開始
             catchphrase = tweet_json.get("catchphrase", "")
             product_name = tweet_json.get("product_name", item_data["Item"]["itemName"][:30])
             benefits = tweet_json.get("benefits", [])
@@ -82,28 +95,26 @@ def main():
             tweet_lines = []
             tweet_lines.append(catchphrase)
             tweet_lines.append(product_name)
-            tweet_lines.append("") # 空行
+            tweet_lines.append("")
             
             for benefit in benefits:
                 tweet_lines.append(f"✅ {benefit}")
             
-            tweet_lines.append("") # 空行
+            tweet_lines.append("")
             tweet_lines.append("👇セール会場へ急げ！")
             tweet_lines.append(short_link)
-            tweet_lines.append("") # 空行
+            tweet_lines.append("")
 
             hashtag_string = "#PR " + " ".join(hashtags)
             tweet_lines.append(hashtag_string)
 
             final_tweet = "\n".join(tweet_lines)
 
-            # 投稿とキャッシュ保存
             try:
                 client.create_tweet(text=final_tweet)
                 print("★★★ ツイート成功！ ★★★")
                 print(final_tweet)
                 
-                # DBにはJSON形式のパーツをそのまま保存
                 database.save_posted_item(item_code, json.dumps(tweet_json, ensure_ascii=False))
                 
                 print("素晴らしいディールを投稿したので、今回の実行はこれで終了します。"); return
