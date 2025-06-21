@@ -23,25 +23,34 @@ class DealScorer:
             score += self.weights["is_free_shipping"]
         return score
 
+# ★★★ ここが最新のスケジュールです ★★★
 def is_post_time():
-    """現在が投稿すべき時間かを判定する"""
+    """現在が投稿すべき時間かを判定する (平日7回/休日10回 高頻度戦略版)"""
     jst = pytz.timezone('Asia/Tokyo')
     now = datetime.now(jst)
-    weekday = now.weekday()
+    weekday = now.weekday()  # 月曜=0, ..., 日曜=6
     hour = now.hour
 
+    # 大型セール期間中は毎時投稿 (変更なし)
     if config.SUPER_SALE_START <= now <= config.SUPER_SALE_END:
         return True
 
-    if 0 <= weekday <= 4 and hour in [7, 12, 21]: return True
-    if weekday >= 5 and hour in [10, 15, 21]: return True
+    # --- 平日の戦略的スケジュール (計7回) ---
+    # 通勤・通学、始業直後、昼休み、午後休憩、退勤、夜のゴールデンタイム、就寝前を狙う
+    if 0 <= weekday <= 4 and hour in [7, 9, 12, 15, 18, 21, 23]:
+        return True
+        
+    # --- 休日の戦略的スケジュール (計10回) ---
+    # 活動が分散する休日は、午前から深夜まで網羅的にカバーし、接触機会を最大化する
+    if weekday >= 5 and hour in [9, 11, 12, 14, 16, 18, 19, 21, 22, 23]:
+        return True
             
     return False
 
 def main():
     """Botのメイン処理"""
     if not is_post_time():
-        print(f"現在時刻は投稿時間外です。処理をスキップします。")
+        print(f"現在時刻 ({datetime.now(pytz.timezone('Asia/Tokyo')).strftime('%H:%M')}) は投稿時間外です。処理をスキップします。")
         return
 
     print("処理開始: データベースとTwitter APIを準備します。")
